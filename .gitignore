@@ -1,0 +1,39 @@
+# npm
+/node_modules
+/.pnp
+.pnp.js
+
+# 테스트 커버리지 리포트
+/coverage
+
+# 프로덕션 빌드 관련
+/build
+
+# 환경변수 파일
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# 디버그 로그
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# 맥 자동생성 파일
+.DS_Store
+
+# 윈도우 썸네일
+Thumbs.db
+
+# 웹스톰 설정
+.idea/
+
+# VSCode 설정
+.vscode/
+
+# Vim 임시파일
+*.swp
+*.swo
