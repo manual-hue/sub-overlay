@@ -32,7 +32,7 @@ const useResourceManager = () => {
     const [isModified, setIsModified] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState(null);
-    const [selectedResourceId, setSelectedResourceId] = useState(null);
+    const [selectedIds, setSelectedIds] = useState(new Set());
     const channelRef = useRef(null);
 
     // BroadcastChannel 초기화
@@ -89,6 +89,20 @@ const useResourceManager = () => {
             prevResources.map(resource =>
                 resource.id === id
                     ? { ...resource, x: data.x, y: data.y, width: data.width, height: data.height }
+                    : resource
+            )
+        );
+    }, []);
+
+    // 그룹 이동 (다중 선택된 요소를 dx, dy만큼 이동)
+    const moveResourcesByDelta = useCallback((ids, dx, dy) => {
+        if (dx === 0 && dy === 0) return;
+        const idSet = new Set(ids);
+        setIsModified(true);
+        setResources(prevResources =>
+            prevResources.map(resource =>
+                idSet.has(resource.id)
+                    ? { ...resource, x: resource.x + dx, y: resource.y + dy }
                     : resource
             )
         );
@@ -152,7 +166,7 @@ const useResourceManager = () => {
         setIsModified(true);
     }, [initialPositions]);
 
-    // 이미지 파일을 처리하는 함수
+    // 이미지 파일을 Base64 Data URL로 변환
     const uploadImage = useCallback(async (file) => {
         if (!file.type.match(/image\/(png|gif)/)) {
             throw new Error('PNG 또는 GIF 파일만 업로드 가능합니다.');
@@ -163,11 +177,17 @@ const useResourceManager = () => {
             throw new Error('이미지는 최대 15개까지만 추가할 수 있습니다.');
         }
 
-        const fileUrl = URL.createObjectURL(file);
+        // Base64로 변환하여 localStorage에 영구 저장 가능하게 함
+        const dataUrl = await new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result);
+            reader.onerror = reject;
+            reader.readAsDataURL(file);
+        });
 
         return {
             filename: file.name,
-            path: fileUrl
+            path: dataUrl
         };
     }, [resources]);
 
@@ -199,10 +219,24 @@ const useResourceManager = () => {
             return newResources;
         });
 
-        if (selectedResourceId === id) {
-            setSelectedResourceId(null);
-        }
-    }, [selectedResourceId]);
+        setSelectedIds(prev => {
+            if (!prev.has(id)) return prev;
+            const next = new Set(prev);
+            next.delete(id);
+            return next;
+        });
+    }, []);
+
+    // 여러 리소스 일괄 삭제
+    const removeResources = useCallback((ids) => {
+        const idSet = new Set(ids);
+        setResources(prevResources => {
+            const newResources = prevResources.filter(r => !idSet.has(r.id));
+            setIsModified(true);
+            return newResources;
+        });
+        setSelectedIds(new Set());
+    }, []);
 
     // 텍스트 리소스 추가
     const addTextResource = useCallback((text, fontFamily = 'Pretendard', fontSize = 24, color = '#000000', textStyles = []) => {
@@ -302,7 +336,7 @@ const useResourceManager = () => {
         }));
 
         setResources(resourcesWithIds);
-        setSelectedResourceId(null);
+        setSelectedIds(new Set());
         setIsModified(true);
     }, []);
 
@@ -314,14 +348,15 @@ const useResourceManager = () => {
 
     return {
         resources,
-        selectedResourceId,
-        setSelectedResourceId,
+        selectedIds,
+        setSelectedIds,
         isModified,
         isLoading,
         isSaving: false,
         isUploading: false,
         error,
         handleResizeOrDrag,
+        moveResourcesByDelta,
         saveCurrentState,
         resetToPreviousPositions,
         resetToInitialPositions,
@@ -332,6 +367,7 @@ const useResourceManager = () => {
         updateResource,
         loadTemplate,
         removeResource,
+        removeResources,
         addResource,
         checkResourceLimit
     };

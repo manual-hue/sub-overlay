@@ -70,8 +70,6 @@ const TransparentOverlay = () => {
                         width: resource.width,
                         height: resource.height,
                         opacity: resource.opacity ?? 1,
-                        backdropFilter: 'blur(8px)',
-                        WebkitBackdropFilter: 'blur(8px)',
                     }}
                 >
                     {resource.type === LAYER_TYPES.IMAGE && (

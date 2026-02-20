@@ -9,7 +9,7 @@ const EditorLayerItem = ({ resource, isSelected, onSelect, onRemove }) => {
                     ? 'bg-dark-selected shadow-md'
                     : 'bg-dark-paper shadow-sm hover:bg-dark-hover'
             }`}
-            onClick={onSelect}
+            onClick={(e) => onSelect(e)}
         >
             <div className="flex items-center gap-2 min-w-0">
                 {resource.type === LAYER_TYPES.IMAGE && (

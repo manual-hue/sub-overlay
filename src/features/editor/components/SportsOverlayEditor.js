@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { Rnd } from 'react-rnd';
 import EditorLayerItem from "./EditorLayerItem";
 import TextEditorDialog from "./TextEditorDialog";
@@ -7,6 +7,7 @@ import TemplateSelectorDialog from "./TemplateSelectorDialog";
 import PropertyPanel from "./PropertyPanel";
 import useResourceManager, { LAYER_TYPES } from "../hooks/useResourceManager";
 import Spinner from '../../../shared/components/Spinner';
+import { toEmbedUrl } from '../../../shared/utils/embedUrl';
 
 const SportsOverlayEditor = () => {
     const [menuOpen, setMenuOpen] = useState(false);
@@ -15,20 +16,79 @@ const SportsOverlayEditor = () => {
     const [templateDialogOpen, setTemplateDialogOpen] = useState(false);
     const [currentTextResource, setCurrentTextResource] = useState(null);
     const [currentShapeResource, setCurrentShapeResource] = useState(null);
+    const [leftPanelOpen, setLeftPanelOpen] = useState(true);
+    const [rightPanelOpen, setRightPanelOpen] = useState(true);
+    const [previewUrl, setPreviewUrl] = useState('');
+    const [loadedPreviewUrl, setLoadedPreviewUrl] = useState('');
+    const [editMode, setEditMode] = useState(true);
     const fileInputRef = useRef(null);
     const [fileTypeError, setFileTypeError] = useState(null);
     const menuRef = useRef(null);
 
     const {
-        resources, selectedResourceId, setSelectedResourceId,
+        resources, selectedIds, setSelectedIds,
         isModified, isLoading, isSaving, isUploading, error,
-        handleResizeOrDrag, saveCurrentState, resetToPreviousPositions,
-        resetToInitialPositions, uploadImage, addTextResource,
-        updateTextResource, addShapeResource, updateResource,
-        loadTemplate, removeResource, addResource, checkResourceLimit
+        handleResizeOrDrag, moveResourcesByDelta, saveCurrentState,
+        resetToPreviousPositions, resetToInitialPositions, uploadImage,
+        addTextResource, updateTextResource, addShapeResource, updateResource,
+        loadTemplate, removeResource, removeResources, addResource, checkResourceLimit
     } = useResourceManager();
 
-    const selectedResource = resources.find(r => r.id === selectedResourceId) || null;
+    // 단일 선택된 리소스 (PropertyPanel용)
+    const selectedResource = selectedIds.size === 1
+        ? resources.find(r => r.id === [...selectedIds][0]) || null
+        : null;
+
+    // 드래그 시작 위치 기록용
+    const dragStartRef = useRef(null);
+
+    // 선택 헬퍼
+    const selectResource = useCallback((id, shiftKey) => {
+        setSelectedIds(prev => {
+            if (shiftKey) {
+                const next = new Set(prev);
+                if (next.has(id)) next.delete(id);
+                else next.add(id);
+                return next;
+            }
+            // 이미 다중 선택에 포함된 요소를 클릭하면 선택 유지 (그룹 드래그용)
+            if (prev.has(id) && prev.size > 1) return prev;
+            return new Set([id]);
+        });
+    }, [setSelectedIds]);
+
+    // Delete 키 삭제 + 화살표 키 이동
+    useEffect(() => {
+        const handleKeyDown = (e) => {
+            const tag = e.target.tagName;
+            if (tag === 'INPUT' || tag === 'TEXTAREA' || e.target.isContentEditable) return;
+
+            if (e.key === 'Delete' && selectedIds.size > 0) {
+                if (selectedIds.size === 1) {
+                    removeResource([...selectedIds][0]);
+                } else {
+                    removeResources([...selectedIds]);
+                }
+                return;
+            }
+
+            // 화살표 키 이동 (Shift: 10px, 기본: 1px)
+            if (selectedIds.size > 0 && ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
+                e.preventDefault();
+                const step = e.shiftKey ? 10 : 1;
+                const delta = {
+                    ArrowUp: [0, -step],
+                    ArrowDown: [0, step],
+                    ArrowLeft: [-step, 0],
+                    ArrowRight: [step, 0],
+                };
+                const [dx, dy] = delta[e.key];
+                moveResourcesByDelta([...selectedIds], dx, dy);
+            }
+        };
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [selectedIds, removeResource, removeResources, moveResourcesByDelta]);
 
     const handleFileUpload = useCallback(async (event) => {
         const file = event.target.files?.[0];
@@ -107,6 +167,16 @@ const SportsOverlayEditor = () => {
         setCurrentShapeResource(resource);
         setShapeDialogOpen(true);
     };
+
+    const handlePreviewLoad = useCallback(() => {
+        const trimmed = previewUrl.trim();
+        if (!trimmed) {
+            setLoadedPreviewUrl('');
+            return;
+        }
+        const raw = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+        setLoadedPreviewUrl(toEmbedUrl(raw));
+    }, [previewUrl]);
 
     const disabled = isLoading || isSaving || isUploading;
 
@@ -226,39 +296,80 @@ const SportsOverlayEditor = () => {
                 </div>
             </div>
 
-            {/* Main content */}
-            <div className="flex flex-1 overflow-hidden">
-                {/* Layer panel */}
-                <div className="w-[250px] p-4 border-r border-gray-700 flex flex-col h-full overflow-auto">
-                    <h2 className="text-sm font-bold mb-2">레이어 ({resources.length})</h2>
+            {/* Preview URL bar */}
+            <div className="flex items-center gap-2 px-4 py-1.5 bg-dark-paper border-b border-gray-700 shrink-0">
+                <svg className="w-4 h-4 text-gray-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                </svg>
+                <input
+                    type="text"
+                    value={previewUrl}
+                    onChange={(e) => setPreviewUrl(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && handlePreviewLoad()}
+                    placeholder="미리보기 URL (YouTube, Twitch 등)"
+                    className="flex-1 bg-dark border border-gray-600 rounded px-3 py-1 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
+                />
+                <button
+                    onClick={handlePreviewLoad}
+                    className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded transition-colors whitespace-nowrap"
+                >
+                    로드
+                </button>
+                {loadedPreviewUrl && (
+                    <>
+                        <button
+                            onClick={() => setEditMode(prev => !prev)}
+                            className={`px-3 py-1 text-sm rounded transition-colors whitespace-nowrap ${
+                                editMode
+                                    ? 'bg-yellow-600 hover:bg-yellow-700 text-white'
+                                    : 'bg-green-600 hover:bg-green-700 text-white'
+                            }`}
+                        >
+                            {editMode ? '영상 조작' : '편집 모드'}
+                        </button>
+                        <button
+                            onClick={() => { setLoadedPreviewUrl(''); setPreviewUrl(''); setEditMode(true); }}
+                            className="px-3 py-1 border border-gray-600 text-gray-400 hover:text-white hover:border-gray-400 text-sm rounded transition-colors whitespace-nowrap"
+                        >
+                            끄기
+                        </button>
+                    </>
+                )}
+            </div>
 
-                    {resources.length === 0 ? (
-                        <p className="text-sm text-gray-500 my-4">
-                            레이어가 없습니다. '추가하기' 버튼을 눌러 새 레이어를 추가해보세요.
-                        </p>
+            {/* Main content */}
+            <div className="relative flex-1 overflow-hidden">
+                {/* Editor canvas - always full size */}
+                <div className="absolute inset-0">
+                    {/* Background: iframe preview or default */}
+                    {loadedPreviewUrl ? (
+                        <iframe
+                            src={loadedPreviewUrl}
+                            title="Editor Preview"
+                            sandbox="allow-scripts allow-same-origin allow-popups"
+                            allow="autoplay; encrypted-media"
+                            className="absolute inset-0 w-full h-full border-0"
+                        />
                     ) : (
-                        <div className="overflow-auto flex-1">
-                            {resources.map((resource) => (
-                                <EditorLayerItem
-                                    key={resource.id}
-                                    resource={resource}
-                                    isSelected={resource.id === selectedResourceId}
-                                    onSelect={() => setSelectedResourceId(resource.id)}
-                                    onRemove={removeResource}
-                                />
-                            ))}
-                        </div>
+                        <div
+                            className="absolute inset-0"
+                            style={{
+                                backgroundColor: 'rgba(0, 0, 0, 0.05)',
+                                backgroundImage: `url('/images/sample-broadcast.jpg')`,
+                                backgroundSize: 'cover',
+                                backgroundPosition: 'center'
+                            }}
+                        />
                     )}
                 </div>
 
-                {/* Editor canvas */}
+                {/* Overlay interaction layer - sits on top of iframe */}
                 <div
-                    className="flex-1 relative overflow-hidden"
-                    style={{
-                        backgroundColor: 'rgba(0, 0, 0, 0.05)',
-                        backgroundImage: `url('/images/sample-broadcast.jpg')`,
-                        backgroundSize: 'cover',
-                        backgroundPosition: 'center'
+                    className="absolute inset-0"
+                    style={{ zIndex: 1, pointerEvents: editMode ? 'auto' : 'none' }}
+                    onClick={(e) => {
+                        // 캔버스 빈 공간 클릭 시 선택 해제
+                        if (e.target === e.currentTarget) setSelectedIds(new Set());
                     }}
                 >
                     {(isLoading || isUploading) && (
@@ -267,102 +378,174 @@ const SportsOverlayEditor = () => {
                         </div>
                     )}
 
-                    {resources.map((resource) => (
-                        <Rnd
-                            key={resource.id}
-                            size={{ width: resource.width, height: resource.height }}
-                            position={{ x: resource.x, y: resource.y }}
-                            onDragStop={(e, d) => {
-                                handleResizeOrDrag(resource.id, { ...resource, x: d.x, y: d.y });
-                            }}
-                            onResizeStop={(e, direction, ref, delta, position) => {
-                                handleResizeOrDrag(resource.id, {
-                                    ...resource,
-                                    width: parseInt(ref.style.width),
-                                    height: parseInt(ref.style.height),
-                                    x: position.x,
-                                    y: position.y
-                                });
-                            }}
-                            bounds="parent"
-                            onMouseDown={() => setSelectedResourceId(resource.id)}
-                            style={{ zIndex: selectedResourceId === resource.id ? 100 : 1 }}
-                        >
-                            <div
-                                className={`w-full h-full flex items-center justify-center relative overflow-hidden cursor-move rounded-sm transition-colors ${
-                                    selectedResourceId === resource.id
-                                        ? 'border-2 border-blue-500'
-                                        : 'border border-dashed border-white/30 hover:border-2 hover:border-blue-500'
-                                }`}
-                                style={{ opacity: resource.opacity ?? 1 }}
+                    {resources.map((resource) => {
+                        const isSelected = selectedIds.has(resource.id);
+                        return (
+                            <Rnd
+                                key={resource.id}
+                                size={{ width: resource.width, height: resource.height }}
+                                position={{ x: resource.x, y: resource.y }}
+                                onDragStart={() => {
+                                    dragStartRef.current = { x: resource.x, y: resource.y };
+                                }}
+                                onDragStop={(e, d) => {
+                                    const startPos = dragStartRef.current ?? { x: resource.x, y: resource.y };
+                                    const dx = d.x - startPos.x;
+                                    const dy = d.y - startPos.y;
+                                    dragStartRef.current = null;
+
+                                    if (isSelected && selectedIds.size > 1) {
+                                        // 드래그한 요소 포함 전체를 한 번에 이동
+                                        moveResourcesByDelta([...selectedIds], dx, dy);
+                                    } else {
+                                        handleResizeOrDrag(resource.id, { ...resource, x: d.x, y: d.y });
+                                    }
+                                }}
+                                onResizeStop={(e, direction, ref, delta, position) => {
+                                    handleResizeOrDrag(resource.id, {
+                                        ...resource,
+                                        width: parseInt(ref.style.width),
+                                        height: parseInt(ref.style.height),
+                                        x: position.x,
+                                        y: position.y
+                                    });
+                                }}
+                                bounds="parent"
+                                onMouseDown={(e) => selectResource(resource.id, e.shiftKey)}
+                                style={{ zIndex: isSelected ? 100 : 1 }}
                             >
-                                {resource.type === LAYER_TYPES.IMAGE && (
-                                    <img
-                                        src={resource.src}
-                                        alt={resource.name}
-                                        className="w-full h-full object-contain"
-                                    />
-                                )}
+                                <div
+                                    className={`w-full h-full flex items-center justify-center relative overflow-hidden cursor-move rounded-sm transition-colors ${
+                                        isSelected
+                                            ? 'border-2 border-blue-500'
+                                            : 'border border-dashed border-white/30 hover:border-2 hover:border-blue-500'
+                                    }`}
+                                    style={{ opacity: resource.opacity ?? 1 }}
+                                >
+                                    {resource.type === LAYER_TYPES.IMAGE && (
+                                        <img
+                                            src={resource.src}
+                                            alt={resource.name}
+                                            className="w-full h-full object-contain"
+                                        />
+                                    )}
 
-                                {resource.type === LAYER_TYPES.TEXT && (
-                                    <div
-                                        className="w-full h-full flex items-center justify-center p-1 break-words overflow-hidden select-none"
-                                        style={{
-                                            fontFamily: resource.fontFamily,
-                                            fontSize: `${resource.fontSize}px`,
-                                            fontWeight: resource.textStyles?.includes('bold') ? 'bold' : 'normal',
-                                            fontStyle: resource.textStyles?.includes('italic') ? 'italic' : 'normal',
-                                            color: resource.color,
-                                        }}
-                                        onDoubleClick={() => handleEditText(resource)}
-                                    >
-                                        {resource.text}
-                                    </div>
-                                )}
+                                    {resource.type === LAYER_TYPES.TEXT && (
+                                        <div
+                                            className="w-full h-full flex items-center justify-center p-1 break-words overflow-hidden select-none"
+                                            style={{
+                                                fontFamily: resource.fontFamily,
+                                                fontSize: `${resource.fontSize}px`,
+                                                fontWeight: resource.textStyles?.includes('bold') ? 'bold' : 'normal',
+                                                fontStyle: resource.textStyles?.includes('italic') ? 'italic' : 'normal',
+                                                color: resource.color,
+                                            }}
+                                            onDoubleClick={() => handleEditText(resource)}
+                                        >
+                                            {resource.text}
+                                        </div>
+                                    )}
 
-                                {resource.type === LAYER_TYPES.SHAPE && (
-                                    <div
-                                        className="w-full h-full"
-                                        style={{
-                                            backgroundColor: resource.fill,
-                                            border: resource.strokeWidth > 0 ? `${resource.strokeWidth}px solid ${resource.stroke}` : 'none',
-                                            borderRadius: resource.shapeType === 'circle' ? '50%' : `${resource.borderRadius || 0}px`,
-                                        }}
-                                        onDoubleClick={() => handleEditShape(resource)}
-                                    />
-                                )}
+                                    {resource.type === LAYER_TYPES.SHAPE && (
+                                        <div
+                                            className="w-full h-full"
+                                            style={{
+                                                backgroundColor: resource.fill,
+                                                border: resource.strokeWidth > 0 ? `${resource.strokeWidth}px solid ${resource.stroke}` : 'none',
+                                                borderRadius: resource.shapeType === 'circle' ? '50%' : `${resource.borderRadius || 0}px`,
+                                            }}
+                                            onDoubleClick={() => handleEditShape(resource)}
+                                        />
+                                    )}
 
-                                {selectedResourceId === resource.id && resource.type === LAYER_TYPES.TEXT && (
-                                    <button
-                                        className="absolute top-0 right-0 bg-blue-600 text-white rounded-bl p-1 z-10 hover:bg-blue-700"
-                                        onClick={() => handleEditText(resource)}
-                                    >
-                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                                        </svg>
-                                    </button>
-                                )}
+                                    {isSelected && resource.type === LAYER_TYPES.TEXT && (
+                                        <button
+                                            className="absolute top-0 right-0 bg-blue-600 text-white rounded-bl p-1 z-10 hover:bg-blue-700"
+                                            onClick={() => handleEditText(resource)}
+                                        >
+                                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                                            </svg>
+                                        </button>
+                                    )}
 
-                                {selectedResourceId === resource.id && resource.type === LAYER_TYPES.SHAPE && (
-                                    <button
-                                        className="absolute top-0 right-0 bg-blue-600 text-white rounded-bl p-1 z-10 hover:bg-blue-700"
-                                        onClick={() => handleEditShape(resource)}
-                                    >
-                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                                        </svg>
-                                    </button>
-                                )}
-                            </div>
-                        </Rnd>
-                    ))}
+                                    {isSelected && resource.type === LAYER_TYPES.SHAPE && (
+                                        <button
+                                            className="absolute top-0 right-0 bg-blue-600 text-white rounded-bl p-1 z-10 hover:bg-blue-700"
+                                            onClick={() => handleEditShape(resource)}
+                                        >
+                                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                                            </svg>
+                                        </button>
+                                    )}
+                                </div>
+                            </Rnd>
+                        );
+                    })}
                 </div>
 
-                {/* Property panel */}
-                <PropertyPanel
-                    resource={selectedResource}
-                    onUpdate={updateResource}
-                />
+                {/* Left panel (Layer) - overlays canvas */}
+                <div
+                    className={`absolute top-0 left-0 h-full z-20 flex transition-transform duration-300 ${
+                        leftPanelOpen ? 'translate-x-0' : '-translate-x-[250px]'
+                    }`}
+                >
+                    <div className="w-[250px] p-4 border-r border-gray-700 bg-dark-paper/95 backdrop-blur-sm flex flex-col h-full overflow-auto">
+                        <h2 className="text-sm font-bold mb-2">레이어 ({resources.length})</h2>
+
+                        {resources.length === 0 ? (
+                            <p className="text-sm text-gray-500 my-4">
+                                레이어가 없습니다. '추가하기' 버튼을 눌러 새 레이어를 추가해보세요.
+                            </p>
+                        ) : (
+                            <div className="overflow-auto flex-1">
+                                {resources.map((resource) => (
+                                    <EditorLayerItem
+                                        key={resource.id}
+                                        resource={resource}
+                                        isSelected={selectedIds.has(resource.id)}
+                                        onSelect={(e) => selectResource(resource.id, e?.shiftKey)}
+                                        onRemove={removeResource}
+                                    />
+                                ))}
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Left toggle button */}
+                    <button
+                        onClick={() => setLeftPanelOpen(prev => !prev)}
+                        className="self-center -mr-px h-16 w-5 flex items-center justify-center bg-dark-paper/90 border border-l-0 border-gray-700 rounded-r text-gray-400 hover:text-white hover:bg-dark-hover transition-colors"
+                    >
+                        <svg className={`w-3.5 h-3.5 transition-transform ${leftPanelOpen ? '' : 'rotate-180'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                        </svg>
+                    </button>
+                </div>
+
+                {/* Right panel (Property) - overlays canvas */}
+                <div
+                    className={`absolute top-0 right-0 h-full z-20 flex transition-transform duration-300 ${
+                        rightPanelOpen ? 'translate-x-0' : 'translate-x-[280px]'
+                    }`}
+                >
+                    {/* Right toggle button */}
+                    <button
+                        onClick={() => setRightPanelOpen(prev => !prev)}
+                        className="self-center -ml-px h-16 w-5 flex items-center justify-center bg-dark-paper/90 border border-r-0 border-gray-700 rounded-l text-gray-400 hover:text-white hover:bg-dark-hover transition-colors"
+                    >
+                        <svg className={`w-3.5 h-3.5 transition-transform ${rightPanelOpen ? '' : 'rotate-180'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                        </svg>
+                    </button>
+
+                    <PropertyPanel
+                        resource={selectedResource}
+                        selectedCount={selectedIds.size}
+                        onUpdate={updateResource}
+                    />
+                </div>
             </div>
 
             {/* Status bar */}

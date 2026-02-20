@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:skills.sh)",
+      "WebFetch(domain:github.com)",
+      "Bash(npm install:*)",
+      "Bash(npx tailwindcss:*)",
+      "Bash(npm uninstall:*)",
+      "Bash(del \"C:\\\\Users\\\\h_031\\\\WebstormProjects\\\\sub-overlay\\\\src\\\\styles\\\\theme.js\")",
+      "Bash(del \"C:\\\\Users\\\\h_031\\\\WebstormProjects\\\\sub-overlay\\\\src\\\\styles\\\\fonts.css\")",
+      "Bash(npx react-scripts build:*)",
+      "Bash(npm audit:*)",
+      "Bash(node -e:*)",
+      "Bash(npm view:*)"
+    ]
+  }
+}

@@ -22,13 +22,20 @@ const NumberInput = ({ label, value, onChange, min, max, step = 1 }) => (
     </div>
 );
 
-const PropertyPanel = ({ resource, onUpdate }) => {
+const PropertyPanel = ({ resource, selectedCount = 0, onUpdate }) => {
     if (!resource) {
         return (
-            <div className="w-[280px] border-l border-gray-700 bg-dark-paper p-4 overflow-y-auto">
+            <div className="w-[280px] border-l border-gray-700 bg-dark-paper/95 backdrop-blur-sm p-4 overflow-y-auto">
                 <p className="text-sm text-gray-500 text-center mt-8">
-                    요소를 선택하면 속성을 편집할 수 있습니다.
+                    {selectedCount > 1
+                        ? `${selectedCount}개 요소 선택됨`
+                        : '요소를 선택하면 속성을 편집할 수 있습니다.'}
                 </p>
+                {selectedCount > 1 && (
+                    <p className="text-xs text-gray-600 text-center mt-2">
+                        Shift+드래그로 함께 이동할 수 있습니다.
+                    </p>
+                )}
             </div>
         );
     }
@@ -38,7 +45,7 @@ const PropertyPanel = ({ resource, onUpdate }) => {
     };
 
     return (
-        <div className="w-[280px] border-l border-gray-700 bg-dark-paper p-4 overflow-y-auto flex flex-col gap-4">
+        <div className="w-[280px] border-l border-gray-700 bg-dark-paper/95 backdrop-blur-sm p-4 overflow-y-auto flex flex-col gap-4">
             <h3 className="text-sm font-bold border-b border-gray-700 pb-2">속성</h3>
 
             {/* Name */}
