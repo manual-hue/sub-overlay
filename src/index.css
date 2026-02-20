@@ -1,0 +1,43 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Font imports */
+@import url("https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css");
+@import url("https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard-jp.min.css");
+
+/* Base dark theme styles */
+body {
+  margin: 0;
+  padding: 0;
+  background-color: #1e1e1e;
+  color: #ffffff;
+  font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, Roboto, 'Helvetica Neue', 'Segoe UI', 'Apple SD Gothic Neo', 'Noto Sans KR', 'Malgun Gothic', sans-serif;
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+/* Custom scrollbar for dark theme */
+::-webkit-scrollbar {
+  width: 8px;
+}
+::-webkit-scrollbar-track {
+  background: #1e1e1e;
+}
+::-webkit-scrollbar-thumb {
+  background: #555;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #777;
+}
+
+/* Spinner animation */
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+.animate-spin {
+  animation: spin 1s linear infinite;
+}
